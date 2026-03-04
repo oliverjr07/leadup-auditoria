@@ -36,7 +36,7 @@ with st.sidebar:
 st.title(f"📊 Relatório de Auditoria - {loja_selecionada}")
 
 # ==========================================
-# 3. MOTOR OTHREE (Regras Rigorosas LeadUp)
+# 3. MOTOR OTHREE E FUNÇÕES DE EXPORTAÇÃO
 # ==========================================
 def limpar_telefone(p):
     if pd.isna(p) or str(p).strip() == '' or p == '­': return None
@@ -56,6 +56,42 @@ EXCLUSAO_DASH_02 = [
     'google', 'indicação de amigo', 'indicação de funcionario', 
     'pista shopping', 'repasse', 'site da loja', 'telefone', 'visita a loja'
 ]
+
+# Nova função para gerar a página limpa com Gráfico + Tabela
+def gerar_relatorio_html(titulo, fig, df_tabela):
+    chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
+    table_html = df_tabela.to_html(index=False, border=0, classes="styled-table")
+    
+    template = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>{titulo}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; padding: 30px; color: #333; }}
+            h2 {{ text-align: center; color: #2c3e50; }}
+            .styled-table {{ border-collapse: collapse; margin: 25px 0; font-size: 0.9em; width: 100%; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1); }}
+            .styled-table thead tr {{ background-color: #6c757d; color: #ffffff; text-align: left; }}
+            .styled-table th, .styled-table td {{ padding: 12px 15px; border: 1px solid #ddd; }}
+            .styled-table tbody tr {{ border-bottom: 1px solid #dddddd; }}
+            .styled-table tbody tr:nth-of-type(even) {{ background-color: #f9f9f9; }}
+            @media print {{
+                .styled-table {{ page-break-inside: auto; }}
+                tr {{ page-break-inside: avoid; page-break-after: auto; }}
+            }}
+        </style>
+    </head>
+    <body>
+        <h2>{titulo}</h2>
+        <div style="width: 100%; margin: 0 auto;">{chart_html}</div>
+        <hr style="border: 1px solid #eee; margin: 30px 0;">
+        <h3>Lista de Vendas Referentes</h3>
+        <div>{table_html}</div>
+    </body>
+    </html>
+    """
+    return template
 
 # ==========================================
 # 4. INTERFACE E PROCESSAMENTO
@@ -171,7 +207,6 @@ with tab_dash:
         if st.session_state['parecer_ia']: st.info(st.session_state['parecer_ia'])
         st.markdown("---")
         
-        # DEFINIÇÃO DO PADRÃO EXATO DAS LISTAGENS
         colunas_lista = [
             'Dt. venda', 
             'Nome Cliente (Vendas)', 
@@ -194,8 +229,13 @@ with tab_dash:
             fig1.update_layout(height=450, xaxis_title="", yaxis_title="Qtd Vendas")
             st.plotly_chart(fig1, use_container_width=True)
             
+            df_lista_1 = df[colunas_lista]
             st.markdown("**Lista de Vendas (Visão Original Completa):**")
-            st.dataframe(df[colunas_lista], use_container_width=True)
+            st.dataframe(df_lista_1, use_container_width=True)
+            
+            # Botão de Exportação do Dash 01
+            html_dash1 = gerar_relatorio_html(f"Dashboard 01 - Visão Vendedor ({loja_selecionada})", fig1, df_lista_1)
+            st.download_button("💾 Salvar este Dashboard (Gráfico + Tabela)", data=html_dash1, file_name=f"Dash01_Vendedor_{loja_selecionada}.html", mime="text/html")
 
         # --- DASH 02: Visão Plataformas ---
         with dash_pag2:
@@ -211,17 +251,22 @@ with tab_dash:
             fig2.update_layout(height=450, xaxis_title="", yaxis_title="Qtd Vendas")
             st.plotly_chart(fig2, use_container_width=True)
             
+            df_lista_2 = df_plataformas[colunas_lista]
             st.markdown("**Lista de Vendas Qualificadas (Apenas Plataformas Digitais):**")
-            st.dataframe(df_plataformas[colunas_lista], use_container_width=True)
+            st.dataframe(df_lista_2, use_container_width=True)
+            
+            # Botão de Exportação do Dash 02
+            html_dash2 = gerar_relatorio_html(f"Dashboard 02 - Visão Plataformas ({loja_selecionada})", fig2, df_lista_2)
+            st.download_button("💾 Salvar este Dashboard (Gráfico + Tabela)", data=html_dash2, file_name=f"Dash02_Plataformas_{loja_selecionada}.html", mime="text/html", key="btn_dash2")
 
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("### 🗄️ Base de Dados Oficial")
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False)
         st.download_button(
-            label="📥 Baixar Planilha Oficial (Padrão LeadUp)", 
+            label="📥 Baixar Planilha Oficial (Padrão LeadUp com 16 colunas)", 
             data=output.getvalue(), 
             file_name="Auditoria_LeadUp.xlsx", 
             type="primary"
-
         )
