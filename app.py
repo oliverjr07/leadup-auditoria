@@ -71,7 +71,7 @@ with tab_upload:
         if arquivo_vendas and arquivo_leads:
             with st.spinner('Cruzando dados e aplicando regras LeadUp...'):
                 try:
-                    CHAVE_SECRETA = "AIzaSyAg1l3TVrcd7TmiF6cOGfvtX_mgAPv1xBk"
+                    CHAVE_SECRETA = st.secrets["GEMINI_API_KEY"]
                     genai.configure(api_key=CHAVE_SECRETA)
                     modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
 
@@ -223,4 +223,5 @@ with tab_dash:
             data=output.getvalue(), 
             file_name="Auditoria_LeadUp.xlsx", 
             type="primary"
+
         )
