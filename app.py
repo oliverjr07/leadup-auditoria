@@ -22,13 +22,12 @@ if 'ultimo_resultado' not in st.session_state: st.session_state['ultimo_resultad
 if 'parecer_ia' not in st.session_state: st.session_state['parecer_ia'] = None
 
 # ==========================================
-# 2. MENU LATERAL (NOVA ESTRUTURA)
+# 2. MENU LATERAL (SISTEMA DE ORIGEM)
 # ==========================================
 with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
     else: st.title("🚀 LeadUp Hub")
     st.markdown("---")
-    loja_selecionada = st.selectbox("📍 Loja Cliente:", ["Curitiba Motors", "OThree Veículos", "AutoGestor Teste"])
     
     # SELETOR DE MÚLTIPLOS SISTEMAS (O Hub Universal)
     sistema_origem = st.selectbox("⚙️ Sistema de Origem:", ["Revenda Mais"])
@@ -36,7 +35,7 @@ with st.sidebar:
     st.markdown("---")
     st.caption("⚡ Tecnologia **OThree**")
 
-st.title(f"📊 Relatório de Auditoria - {loja_selecionada}")
+st.title("📊 Relatório de Auditoria LeadUp")
 
 # ==========================================
 # 3. FUNÇÕES GERAIS E EXPORTAÇÃO
@@ -201,7 +200,7 @@ with tab_upload:
                     
                     st.session_state['ultimo_resultado'] = relatorio_final
                     
-                    prompt = f"Aja como auditor da LeadUp. Escreva 1 parágrafo de resumo executivo focado em apontar falhas de preenchimento de CRM que escondem o ROI dos portais digitais da loja {loja_selecionada}."
+                    prompt = "Aja como auditor da LeadUp. Escreva 1 parágrafo de resumo executivo focado em apontar falhas de preenchimento de CRM que escondem o ROI dos portais digitais da operação analisada."
                     st.session_state['parecer_ia'] = modelo_ia.generate_content(prompt).text
                     st.success("✅ Auditoria finalizada! Veja os Dashboards.")
 
@@ -242,8 +241,8 @@ with tab_dash:
             st.markdown("**Lista de Vendas (Visão Original Completa):**")
             st.dataframe(df_lista_1, use_container_width=True)
             
-            html_dash1 = gerar_relatorio_html(f"Dashboard 01 - Visão Vendedor ({loja_selecionada})", fig1, df_lista_1)
-            st.download_button("💾 Salvar este Dashboard (Gráfico + Tabela)", data=html_dash1, file_name=f"Dash01_Vendedor_{loja_selecionada}.html", mime="text/html")
+            html_dash1 = gerar_relatorio_html("Dashboard 01 - Visão Vendedor", fig1, df_lista_1)
+            st.download_button("💾 Salvar este Dashboard (Gráfico + Tabela)", data=html_dash1, file_name="Dash01_Vendedor.html", mime="text/html")
 
         # --- DASH 02: Visão Plataformas ---
         with dash_pag2:
@@ -263,8 +262,8 @@ with tab_dash:
             st.markdown("**Lista de Vendas Qualificadas (Apenas Plataformas Digitais):**")
             st.dataframe(df_lista_2, use_container_width=True)
             
-            html_dash2 = gerar_relatorio_html(f"Dashboard 02 - Visão Plataformas ({loja_selecionada})", fig2, df_lista_2)
-            st.download_button("💾 Salvar este Dashboard (Gráfico + Tabela)", data=html_dash2, file_name=f"Dash02_Plataformas_{loja_selecionada}.html", mime="text/html", key="btn_dash2")
+            html_dash2 = gerar_relatorio_html("Dashboard 02 - Visão Plataformas", fig2, df_lista_2)
+            st.download_button("💾 Salvar este Dashboard (Gráfico + Tabela)", data=html_dash2, file_name="Dash02_Plataformas.html", mime="text/html", key="btn_dash2")
 
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("### 🗄️ Base de Dados Oficial")
