@@ -22,19 +22,18 @@ if 'ultimo_resultado' not in st.session_state: st.session_state['ultimo_resultad
 if 'parecer_ia' not in st.session_state: st.session_state['parecer_ia'] = None
 
 # ==========================================
-# 2. MENU LATERAL (SISTEMA DE ORIGEM E RESET)
+# 2. MENU LATERAL
 # ==========================================
 with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
     else: st.title("🚀 LeadUp Hub")
     st.markdown("---")
     
-    sistema_origem = st.selectbox("⚙️ Sistema de Origem:", ["Revenda Mais"])
+    sistema_origem = st.selectbox("⚙️ Sistema de Origem:", ["Revenda Mais", "Auto Confi"])
     
     st.markdown("---")
     
-    # BOTÃO DE RESET - LIMPA A MEMÓRIA PARA A PRÓXIMA LOJA
-    if st.button("🔄 Limpar Tudo (Nova Loja)", use_container_width=True):
+    if st.button("✨ Nova Auditoria", use_container_width=True):
         st.session_state.clear()
         st.rerun()
         
@@ -46,6 +45,17 @@ st.title("📊 Relatório de Auditoria LeadUp")
 # ==========================================
 # 3. FUNÇÕES GERAIS E PADRONIZAÇÃO
 # ==========================================
+def carregar_arquivo(arquivo, sem_cabecalho=False):
+    """Lê o arquivo de forma inteligente, seja CSV ou Excel"""
+    if arquivo.name.endswith('.csv'):
+        if sem_cabecalho:
+            return pd.read_csv(arquivo, header=None, sep=None, engine='python')
+        return pd.read_csv(arquivo, sep=None, engine='python')
+    else:
+        if sem_cabecalho:
+            return pd.read_excel(arquivo, header=None)
+        return pd.read_excel(arquivo)
+
 def limpar_telefone(p):
     if pd.isna(p) or str(p).strip() == '' or p == '­': return None
     digitos = re.sub(r'\D', '', str(p))
@@ -81,16 +91,17 @@ def padronizar_canal(c):
     if 'telefone' in c_lower: return 'Telefone'
     if 'facebook' in c_lower: return 'Facebook'
     if 'google' in c_lower: return 'Google'
+    if 'carteira' in c_lower: return 'Carteira'
     
     return str(c).strip().title()
 
-CANAIS_FISICOS = ['visita a loja', 'cliente da loja', 'pista shopping', 'autoshopping', 'telefone', 'indicação', 'feirão', 'repasse']
+CANAIS_FISICOS = ['visita a loja', 'cliente da loja', 'pista shopping', 'autoshopping', 'telefone', 'indicação', 'feirão', 'repasse', 'carteira']
 CANAIS_DIGITAIS = ['webmotors', 'socarrao', 'olx', 'na pista', 'icarros', 'chaves na mao', 'facebook', 'google', 'mercado livre', 'site']
 
 EXCLUSAO_DASH_02 = [
     'autoshopping', 'cliente da loja', 'facebook', 'feirão shopping', 
     'google', 'indicação de amigo', 'indicação de funcionario', 
-    'pista shopping', 'repasse', 'site da loja', 'telefone', 'visita a loja'
+    'pista shopping', 'repasse', 'site da loja', 'telefone', 'visita a loja', 'carteira'
 ]
 
 def gerar_relatorio_html(titulo, fig, df_tabela):
@@ -113,15 +124,16 @@ def gerar_relatorio_html(titulo, fig, df_tabela):
     return template
 
 # ==========================================
-# 4. INTERFACE E PROCESSAMENTO CENTRAL
+# 4. INTERFACE E PROCESSAMENTO
 # ==========================================
 tab_upload, tab_dash = st.tabs(["📂 1. Nova Auditoria", "📈 2. Dashboards de Apresentação"])
 
 with tab_upload:
     st.markdown(f"**Importando dados do sistema:** `{sistema_origem}`")
     col1, col2 = st.columns(2)
-    with col1: arquivo_vendas = st.file_uploader("VENDAS (.xlsx)", type=['xlsx'])
-    with col2: arquivo_leads = st.file_uploader("LEADS (.xlsx)", type=['xlsx'])
+    # ATUALIZADO: Agora aceita CSV e XLSX
+    with col1: arquivo_vendas = st.file_uploader("VENDAS (.xlsx, .csv)", type=['xlsx', 'csv'])
+    with col2: arquivo_leads = st.file_uploader("LEADS (.xlsx, .csv)", type=['xlsx', 'csv'])
 
     if st.button("Gerar Auditoria e Dashboards", use_container_width=True):
         if arquivo_vendas and arquivo_leads:
@@ -131,9 +143,12 @@ with tab_upload:
                     genai.configure(api_key=CHAVE_SECRETA)
                     modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
 
+                    # ---------------------------------------------------------
+                    # MÓDULO 1: REVENDA MAIS
+                    # ---------------------------------------------------------
                     if sistema_origem == "Revenda Mais":
-                        vendas = pd.read_excel(arquivo_vendas)
-                        leads = pd.read_excel(arquivo_leads)
+                        vendas = carregar_arquivo(arquivo_vendas)
+                        leads = carregar_arquivo(arquivo_leads)
                         
                         vendas.columns = vendas.columns.str.strip()
                         leads.columns = leads.columns.str.strip()
@@ -166,7 +181,6 @@ with tab_upload:
                                 })
 
                             canal_lead_recente = str(m_leads.iloc[-1]['Canal'])
-                            
                             ids = ' / '.join(m_leads['Id'].astype(str).unique())
                             names = ' / '.join(m_leads['Cliente'].dropna().unique())
                             emails = ' / '.join(m_leads['E-mail'].dropna().unique())
@@ -187,11 +201,8 @@ with tab_upload:
                                 status = 'Divergência: Canais Digitais Diferentes'
 
                             return pd.Series({
-                                'Id Leads (Leads)': ids,
-                                'Nome Cliente (Leads)': names,
-                                'E-mail (Leads)': emails,
-                                'Conversão (Leads)': last_conv,
-                                'Canais Leads (Leads)': canal_lead_recente,
+                                'Id Leads (Leads)': ids, 'Nome Cliente (Leads)': names, 'E-mail (Leads)': emails,
+                                'Conversão (Leads)': last_conv, 'Canais Leads (Leads)': canal_lead_recente,
                                 'Data Primeiro Lead (Leads)': first_date.strftime('%d/%m/%Y') if pd.notnull(first_date) else '-',
                                 'Data Último Lead (Leads)': last_date.strftime('%d/%m/%Y') if pd.notnull(last_date) else '-',
                                 'Validação (Status)': status
@@ -199,27 +210,106 @@ with tab_upload:
 
                         res = vendas.apply(motor, axis=1)
                         relatorio_bruto = pd.concat([vendas, res], axis=1)
-                        
-                        relatorio_bruto = relatorio_bruto.rename(columns={
-                            'Cliente': 'Nome Cliente (Vendas)',
-                            'CPF/CNPJ': 'CPF/CNPJ (Vendas)',
-                            'E-mail': 'E-mail (Vendas)',
-                            'Canal': 'Canal Venda (Vendas)'
-                        })
-                        
-                        colunas_finais = [
-                            'Id Leads (Leads)', 'Nome Cliente (Vendas)', 'Nome Cliente (Leads)', 
-                            'CPF/CNPJ (Vendas)', 'E-mail (Vendas)', 'E-mail (Leads)', 
-                            'Conversão (Leads)', 'Canal Venda (Vendas)', 'Canais Leads (Leads)', 
-                            'Validação (Status)', 'Data Primeiro Lead (Leads)', 'Data Último Lead (Leads)', 
-                            'Dt. venda', 'Modelo', 'Placa', 'Celular'
-                        ]
-                        
-                        for col in colunas_finais:
-                            if col not in relatorio_bruto.columns: relatorio_bruto[col] = '-'
+                        relatorio_bruto = relatorio_bruto.rename(columns={'Cliente': 'Nome Cliente (Vendas)', 'CPF/CNPJ': 'CPF/CNPJ (Vendas)', 'E-mail': 'E-mail (Vendas)', 'Canal': 'Canal Venda (Vendas)'})
 
-                        relatorio_final = relatorio_bruto[colunas_finais]
+
+                    # ---------------------------------------------------------
+                    # MÓDULO 2: AUTO CONFI
+                    # ---------------------------------------------------------
+                    elif sistema_origem == "Auto Confi":
+                        # Vendas do Auto Confi vem sem cabeçalho e sujo
+                        vendas_brutas = carregar_arquivo(arquivo_vendas, sem_cabecalho=True)
+                        
+                        # Filtra apenas as linhas reais de venda (que começam com # na primeira coluna)
+                        vendas = vendas_brutas[vendas_brutas[0].astype(str).str.startswith('#', na=False)].copy()
+                        
+                        # Prepara as colunas renomeando os índices
+                        vendas['ID Venda'] = vendas[0]
+                        
+                        # Limpa a data (Tira o " às 10:49")
+                        vendas['Dt. venda'] = vendas[1].astype(str).apply(lambda x: x.split(' às ')[0] if ' às ' in x else x)
+                        
+                        vendas['Modelo'] = vendas[6]
+                        vendas['Nome Cliente (Vendas)'] = vendas[7]
+                        vendas['Celular'] = vendas[8]
+                        vendas['Canal Venda (Vendas)'] = vendas[9].apply(padronizar_canal)
+                        
+                        # Preenche colunas que o Auto Confi não tem para não quebrar a planilha final
+                        vendas['E-mail (Vendas)'] = '-'
+                        vendas['CPF/CNPJ (Vendas)'] = '-'
+                        vendas['Placa'] = '-'
+                        
+                        # Chave de cruzamento (Apenas Telefone)
+                        vendas['phone_key'] = vendas['Celular'].apply(limpar_telefone)
+
+                        # Leads do Auto Confi é normal e limpinho
+                        leads = carregar_arquivo(arquivo_leads)
+                        leads.columns = leads.columns.str.strip()
+                        leads['Canal'] = leads['Origem'].apply(padronizar_canal)
+                        leads['phone_key'] = leads['Celular'].apply(limpar_telefone)
+                        leads['Data criação'] = pd.to_datetime(leads['Criado em'], errors='coerce')
+
+                        def motor_autoconfi(row):
+                            p = row['phone_key']
+                            mask = (leads['phone_key'] == p) if p else pd.Series([False]*len(leads))
+                            m_leads = leads[mask].sort_values('Data criação')
+                            
+                            canal_vendedor_padrao = str(row['Canal Venda (Vendas)'])
+                            
+                            if m_leads.empty:
+                                return pd.Series({
+                                    'Id Leads (Leads)': '-', 'Nome Cliente (Leads)': '-', 'E-mail (Leads)': '-',
+                                    'Conversão (Leads)': '-', 'Canais Leads (Leads)': canal_vendedor_padrao, 
+                                    'Data Primeiro Lead (Leads)': '-', 'Data Último Lead (Leads)': '-', 
+                                    'Validação (Status)': 'Venda Direta / Sem Lead'
+                                })
+
+                            canal_lead_recente = str(m_leads.iloc[-1]['Canal'])
+                            ids = ' / '.join(m_leads['ID'].astype(str).unique())
+                            names = ' / '.join(m_leads['Cliente'].dropna().unique())
+                            emails = ' / '.join(m_leads['E-mail'].dropna().astype(str).unique()) if 'E-mail' in m_leads.columns else '-'
+                            first_date = m_leads['Data criação'].min()
+                            last_date = m_leads['Data criação'].max()
+                            last_conv = m_leads.iloc[-1]['Status'] if 'Status' in m_leads.columns else '-'
+                            
+                            c_leads_all = ' '.join(m_leads['Canal'].dropna().unique()).lower()
+                            canal_vendedor_raw = canal_vendedor_padrao.lower()
+                            
+                            is_phys = any(f in canal_vendedor_raw for f in CANAIS_FISICOS)
+                            has_dig = any(d in c_leads_all for d in CANAIS_DIGITAIS)
+                            
+                            status = 'Validado'
+                            if is_phys and has_dig:
+                                status = 'ALERTA: Perda de Atribuição (Digital -> Pátio)'
+                            elif not is_phys and not any(canal_vendedor_raw in str(c).lower() for c in m_leads['Canal'].unique()):
+                                status = 'Divergência: Canais Digitais Diferentes'
+
+                            return pd.Series({
+                                'Id Leads (Leads)': ids, 'Nome Cliente (Leads)': names, 'E-mail (Leads)': emails,
+                                'Conversão (Leads)': last_conv, 'Canais Leads (Leads)': canal_lead_recente,
+                                'Data Primeiro Lead (Leads)': first_date.strftime('%d/%m/%Y') if pd.notnull(first_date) else '-',
+                                'Data Último Lead (Leads)': last_date.strftime('%d/%m/%Y') if pd.notnull(last_date) else '-',
+                                'Validação (Status)': status
+                            })
+
+                        res = vendas.apply(motor_autoconfi, axis=1)
+                        relatorio_bruto = pd.concat([vendas, res], axis=1)
+
+                    # ---------------------------------------------------------
+                    # ESTRUTURA FINAL PADRÃO LEADUP (Válida para TODOS os sistemas)
+                    # ---------------------------------------------------------
+                    colunas_finais = [
+                        'Id Leads (Leads)', 'Nome Cliente (Vendas)', 'Nome Cliente (Leads)', 
+                        'CPF/CNPJ (Vendas)', 'E-mail (Vendas)', 'E-mail (Leads)', 
+                        'Conversão (Leads)', 'Canal Venda (Vendas)', 'Canais Leads (Leads)', 
+                        'Validação (Status)', 'Data Primeiro Lead (Leads)', 'Data Último Lead (Leads)', 
+                        'Dt. venda', 'Modelo', 'Placa', 'Celular'
+                    ]
                     
+                    for col in colunas_finais:
+                        if col not in relatorio_bruto.columns: relatorio_bruto[col] = '-'
+
+                    relatorio_final = relatorio_bruto[colunas_finais]
                     st.session_state['ultimo_resultado'] = relatorio_final
                     
                     prompt = "Aja como auditor da LeadUp. Escreva 1 parágrafo de resumo executivo focado em apontar falhas de preenchimento de CRM que escondem o ROI dos portais digitais da operação analisada."
@@ -291,7 +381,7 @@ with tab_dash:
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False)
         st.download_button(
-            label="📥 Baixar Planilha Oficial", 
+            label="📥 Baixar Planilha Oficial (Padrão LeadUp com 16 colunas)", 
             data=output.getvalue(), 
             file_name="Auditoria_LeadUp.xlsx", 
             type="primary"
