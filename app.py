@@ -22,21 +22,24 @@ if 'ultimo_resultado' not in st.session_state: st.session_state['ultimo_resultad
 if 'parecer_ia' not in st.session_state: st.session_state['parecer_ia'] = None
 
 # ==========================================
-# 2. MENU LATERAL
+# 2. MENU LATERAL (NOVA ESTRUTURA)
 # ==========================================
 with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
     else: st.title("🚀 LeadUp Hub")
     st.markdown("---")
-    loja_selecionada = st.selectbox("📍 Loja:", ["Curitiba Motors", "OThree Veículos", "AutoGestor Teste"])
-    operador = st.text_input("👤 Consultor:", value="Consultor LeadUp")
+    loja_selecionada = st.selectbox("📍 Loja Cliente:", ["Curitiba Motors", "OThree Veículos", "AutoGestor Teste"])
+    
+    # SELETOR DE MÚLTIPLOS SISTEMAS (O Hub Universal)
+    sistema_origem = st.selectbox("⚙️ Sistema de Origem:", ["Revenda Mais"])
+    
     st.markdown("---")
     st.caption("⚡ Tecnologia **OThree**")
 
 st.title(f"📊 Relatório de Auditoria - {loja_selecionada}")
 
 # ==========================================
-# 3. MOTOR OTHREE E FUNÇÕES DE EXPORTAÇÃO
+# 3. FUNÇÕES GERAIS E EXPORTAÇÃO
 # ==========================================
 def limpar_telefone(p):
     if pd.isna(p) or str(p).strip() == '' or p == '­': return None
@@ -57,7 +60,6 @@ EXCLUSAO_DASH_02 = [
     'pista shopping', 'repasse', 'site da loja', 'telefone', 'visita a loja'
 ]
 
-# Nova função para gerar a página limpa com Gráfico + Tabela
 def gerar_relatorio_html(titulo, fig, df_tabela):
     chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
     table_html = df_tabela.to_html(index=False, border=0, classes="styled-table")
@@ -94,109 +96,116 @@ def gerar_relatorio_html(titulo, fig, df_tabela):
     return template
 
 # ==========================================
-# 4. INTERFACE E PROCESSAMENTO
+# 4. INTERFACE E PROCESSAMENTO CENTRAL
 # ==========================================
 tab_upload, tab_dash = st.tabs(["📂 1. Nova Auditoria", "📈 2. Dashboards de Apresentação"])
 
 with tab_upload:
+    st.markdown(f"**Importando dados do sistema:** `{sistema_origem}`")
     col1, col2 = st.columns(2)
     with col1: arquivo_vendas = st.file_uploader("VENDAS (.xlsx)", type=['xlsx'])
     with col2: arquivo_leads = st.file_uploader("LEADS (.xlsx)", type=['xlsx'])
 
     if st.button("Gerar Auditoria e Dashboards", use_container_width=True):
         if arquivo_vendas and arquivo_leads:
-            with st.spinner('Cruzando dados e aplicando regras LeadUp...'):
+            with st.spinner(f'Cruzando dados e aplicando regras LeadUp para {sistema_origem}...'):
                 try:
                     CHAVE_SECRETA = st.secrets["GEMINI_API_KEY"]
                     genai.configure(api_key=CHAVE_SECRETA)
                     modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
 
-                    vendas = pd.read_excel(arquivo_vendas)
-                    leads = pd.read_excel(arquivo_leads)
-                    vendas.columns = vendas.columns.str.strip()
-                    leads.columns = leads.columns.str.strip()
+                    # ---------------------------------------------------------
+                    # MÓDULO 1: REVENDA MAIS
+                    # ---------------------------------------------------------
+                    if sistema_origem == "Revenda Mais":
+                        vendas = pd.read_excel(arquivo_vendas)
+                        leads = pd.read_excel(arquivo_leads)
+                        vendas.columns = vendas.columns.str.strip()
+                        leads.columns = leads.columns.str.strip()
 
-                    vendas['email_key'] = vendas['E-mail'].apply(limpar_email)
-                    vendas['phone_key'] = vendas['Celular'].apply(limpar_telefone)
-                    leads['email_key'] = leads['E-mail'].apply(limpar_email)
-                    leads['phone_key'] = leads['Telefone'].apply(limpar_telefone)
-                    leads['Data criação'] = pd.to_datetime(leads['Data criação'], errors='coerce')
+                        vendas['email_key'] = vendas['E-mail'].apply(limpar_email)
+                        vendas['phone_key'] = vendas['Celular'].apply(limpar_telefone)
+                        leads['email_key'] = leads['E-mail'].apply(limpar_email)
+                        leads['phone_key'] = leads['Telefone'].apply(limpar_telefone)
+                        leads['Data criação'] = pd.to_datetime(leads['Data criação'], errors='coerce')
 
-                    def motor(row):
-                        e, p = row['email_key'], row['phone_key']
-                        mask = (leads['email_key'] == e) | (leads['phone_key'] == p) if e or p else pd.Series([False]*len(leads))
-                        m_leads = leads[mask].sort_values('Data criação')
-                        
-                        canal_vendedor_raw = str(row['Canal']).strip()
-                        canal_vendedor_padrao = canal_vendedor_raw.title()
-                        
-                        if m_leads.empty:
+                        def motor(row):
+                            e, p = row['email_key'], row['phone_key']
+                            mask = (leads['email_key'] == e) | (leads['phone_key'] == p) if e or p else pd.Series([False]*len(leads))
+                            m_leads = leads[mask].sort_values('Data criação')
+                            
+                            canal_vendedor_raw = str(row['Canal']).strip()
+                            canal_vendedor_padrao = canal_vendedor_raw.title()
+                            
+                            if m_leads.empty:
+                                return pd.Series({
+                                    'Id Leads (Leads)': '-', 'Nome Cliente (Leads)': '-', 'E-mail (Leads)': '-',
+                                    'Conversão (Leads)': '-', 'Canais Leads (Leads)': canal_vendedor_padrao, 
+                                    'Data Primeiro Lead (Leads)': '-', 'Data Último Lead (Leads)': '-', 
+                                    'Validação (Status)': 'Venda Direta / Sem Lead'
+                                })
+
+                            canal_lead_recente = str(m_leads.iloc[-1]['Canal']).strip().title()
+                            
+                            ids = ' / '.join(m_leads['Id'].astype(str).unique())
+                            names = ' / '.join(m_leads['Cliente'].dropna().unique())
+                            emails = ' / '.join(m_leads['E-mail'].dropna().unique())
+                            first_date = m_leads['Data criação'].min()
+                            last_date = m_leads['Data criação'].max()
+                            last_conv = m_leads.iloc[-1]['Conversão'] if 'Conversão' in m_leads.columns else '-'
+
+                            c_leads_all = ' '.join(m_leads['Canal'].dropna().unique()).lower()
+                            is_phys = any(p in canal_vendedor_raw.lower() for p in CANAIS_FISICOS)
+                            has_dig = any(d in c_leads_all for d in CANAIS_DIGITAIS)
+                            
+                            status = 'Validado'
+                            if is_phys and has_dig:
+                                status = 'ALERTA: Perda de Atribuição (Digital -> Pátio)'
+                            elif not is_phys and not any(canal_vendedor_raw.lower() in str(c).lower() for c in m_leads['Canal'].unique()):
+                                status = 'Divergência: Canais Digitais Diferentes'
+
                             return pd.Series({
-                                'Id Leads (Leads)': '-', 'Nome Cliente (Leads)': '-', 'E-mail (Leads)': '-',
-                                'Conversão (Leads)': '-', 'Canais Leads (Leads)': canal_vendedor_padrao, 
-                                'Data Primeiro Lead (Leads)': '-', 'Data Último Lead (Leads)': '-', 
-                                'Validação (Status)': 'Venda Direta / Sem Lead'
+                                'Id Leads (Leads)': ids,
+                                'Nome Cliente (Leads)': names,
+                                'E-mail (Leads)': emails,
+                                'Conversão (Leads)': last_conv,
+                                'Canais Leads (Leads)': canal_lead_recente,
+                                'Data Primeiro Lead (Leads)': first_date.strftime('%d/%m/%Y') if pd.notnull(first_date) else '-',
+                                'Data Último Lead (Leads)': last_date.strftime('%d/%m/%Y') if pd.notnull(last_date) else '-',
+                                'Validação (Status)': status
                             })
 
-                        canal_lead_recente = str(m_leads.iloc[-1]['Canal']).strip().title()
+                        res = vendas.apply(motor, axis=1)
+                        relatorio_bruto = pd.concat([vendas, res], axis=1)
                         
-                        ids = ' / '.join(m_leads['Id'].astype(str).unique())
-                        names = ' / '.join(m_leads['Cliente'].dropna().unique())
-                        emails = ' / '.join(m_leads['E-mail'].dropna().unique())
-                        first_date = m_leads['Data criação'].min()
-                        last_date = m_leads['Data criação'].max()
-                        last_conv = m_leads.iloc[-1]['Conversão'] if 'Conversão' in m_leads.columns else '-'
-
-                        c_leads_all = ' '.join(m_leads['Canal'].dropna().unique()).lower()
-                        is_phys = any(p in canal_vendedor_raw.lower() for p in CANAIS_FISICOS)
-                        has_dig = any(d in c_leads_all for d in CANAIS_DIGITAIS)
-                        
-                        status = 'Validado'
-                        if is_phys and has_dig:
-                            status = 'ALERTA: Perda de Atribuição (Digital -> Pátio)'
-                        elif not is_phys and not any(canal_vendedor_raw.lower() in str(c).lower() for c in m_leads['Canal'].unique()):
-                            status = 'Divergência: Canais Digitais Diferentes'
-
-                        return pd.Series({
-                            'Id Leads (Leads)': ids,
-                            'Nome Cliente (Leads)': names,
-                            'E-mail (Leads)': emails,
-                            'Conversão (Leads)': last_conv,
-                            'Canais Leads (Leads)': canal_lead_recente,
-                            'Data Primeiro Lead (Leads)': first_date.strftime('%d/%m/%Y') if pd.notnull(first_date) else '-',
-                            'Data Último Lead (Leads)': last_date.strftime('%d/%m/%Y') if pd.notnull(last_date) else '-',
-                            'Validação (Status)': status
+                        relatorio_bruto = relatorio_bruto.rename(columns={
+                            'Cliente': 'Nome Cliente (Vendas)',
+                            'CPF/CNPJ': 'CPF/CNPJ (Vendas)',
+                            'E-mail': 'E-mail (Vendas)',
+                            'Canal': 'Canal Venda (Vendas)'
                         })
+                        
+                        colunas_finais = [
+                            'Id Leads (Leads)', 'Nome Cliente (Vendas)', 'Nome Cliente (Leads)', 
+                            'CPF/CNPJ (Vendas)', 'E-mail (Vendas)', 'E-mail (Leads)', 
+                            'Conversão (Leads)', 'Canal Venda (Vendas)', 'Canais Leads (Leads)', 
+                            'Validação (Status)', 'Data Primeiro Lead (Leads)', 'Data Último Lead (Leads)', 
+                            'Dt. venda', 'Modelo', 'Placa', 'Celular'
+                        ]
+                        
+                        for col in colunas_finais:
+                            if col not in relatorio_bruto.columns: relatorio_bruto[col] = '-'
 
-                    res = vendas.apply(motor, axis=1)
-                    relatorio_bruto = pd.concat([vendas, res], axis=1)
+                        relatorio_final = relatorio_bruto[colunas_finais]
+                    # ---------------------------------------------------------
                     
-                    relatorio_bruto = relatorio_bruto.rename(columns={
-                        'Cliente': 'Nome Cliente (Vendas)',
-                        'CPF/CNPJ': 'CPF/CNPJ (Vendas)',
-                        'E-mail': 'E-mail (Vendas)',
-                        'Canal': 'Canal Venda (Vendas)'
-                    })
-                    
-                    colunas_finais = [
-                        'Id Leads (Leads)', 'Nome Cliente (Vendas)', 'Nome Cliente (Leads)', 
-                        'CPF/CNPJ (Vendas)', 'E-mail (Vendas)', 'E-mail (Leads)', 
-                        'Conversão (Leads)', 'Canal Venda (Vendas)', 'Canais Leads (Leads)', 
-                        'Validação (Status)', 'Data Primeiro Lead (Leads)', 'Data Último Lead (Leads)', 
-                        'Dt. venda', 'Modelo', 'Placa', 'Celular'
-                    ]
-                    
-                    for col in colunas_finais:
-                        if col not in relatorio_bruto.columns: relatorio_bruto[col] = '-'
-
-                    relatorio_final = relatorio_bruto[colunas_finais]
                     st.session_state['ultimo_resultado'] = relatorio_final
                     
                     prompt = f"Aja como auditor da LeadUp. Escreva 1 parágrafo de resumo executivo focado em apontar falhas de preenchimento de CRM que escondem o ROI dos portais digitais da loja {loja_selecionada}."
                     st.session_state['parecer_ia'] = modelo_ia.generate_content(prompt).text
                     st.success("✅ Auditoria finalizada! Veja os Dashboards.")
 
-                except Exception as e: st.error(f"Erro: {e}")
+                except Exception as e: st.error(f"Erro no processamento: {e}")
 
 # --- ABA 2: DASHBOARDS SEPARADOS ---
 with tab_dash:
@@ -233,7 +242,6 @@ with tab_dash:
             st.markdown("**Lista de Vendas (Visão Original Completa):**")
             st.dataframe(df_lista_1, use_container_width=True)
             
-            # Botão de Exportação do Dash 01
             html_dash1 = gerar_relatorio_html(f"Dashboard 01 - Visão Vendedor ({loja_selecionada})", fig1, df_lista_1)
             st.download_button("💾 Salvar este Dashboard (Gráfico + Tabela)", data=html_dash1, file_name=f"Dash01_Vendedor_{loja_selecionada}.html", mime="text/html")
 
@@ -255,7 +263,6 @@ with tab_dash:
             st.markdown("**Lista de Vendas Qualificadas (Apenas Plataformas Digitais):**")
             st.dataframe(df_lista_2, use_container_width=True)
             
-            # Botão de Exportação do Dash 02
             html_dash2 = gerar_relatorio_html(f"Dashboard 02 - Visão Plataformas ({loja_selecionada})", fig2, df_lista_2)
             st.download_button("💾 Salvar este Dashboard (Gráfico + Tabela)", data=html_dash2, file_name=f"Dash02_Plataformas_{loja_selecionada}.html", mime="text/html", key="btn_dash2")
 
