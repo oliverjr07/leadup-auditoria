@@ -29,7 +29,6 @@ with st.sidebar:
     else: st.title("🚀 LeadUp Hub")
     st.markdown("---")
     
-    # SELETOR DE MÚLTIPLOS SISTEMAS (O Hub Universal)
     sistema_origem = st.selectbox("⚙️ Sistema de Origem:", ["Revenda Mais"])
     
     st.markdown("---")
@@ -38,7 +37,7 @@ with st.sidebar:
 st.title("📊 Relatório de Auditoria LeadUp")
 
 # ==========================================
-# 3. FUNÇÕES GERAIS E EXPORTAÇÃO
+# 3. FUNÇÕES GERAIS E PADRONIZAÇÃO
 # ==========================================
 def limpar_telefone(p):
     if pd.isna(p) or str(p).strip() == '' or p == '­': return None
@@ -50,8 +49,39 @@ def limpar_email(e):
     if pd.isna(e) or str(e).strip() == '' or e == '­': return None
     return str(e).strip().lower()
 
+# O PADRONIZADOR DE CANAIS (Limpa a bagunça de nomes)
+def padronizar_canal(c):
+    if pd.isna(c) or str(c).strip() == '': return '-'
+    c_lower = str(c).lower().strip()
+    
+    # Padronização de Portais Digitais
+    if 'mercadolivre' in c_lower or 'mercado livre' in c_lower: return 'Mercado Livre'
+    if 'na pista' in c_lower: return 'Na Pista'
+    if 'webmotors' in c_lower: return 'Webmotors'
+    if 'socarrao' in c_lower or 'sócarrão' in c_lower: return 'SóCarrão'
+    if 'icarros' in c_lower: return 'iCarros'
+    if 'olx' in c_lower: return 'OLX'
+    if 'chaves na mao' in c_lower or 'chaves na mão' in c_lower: return 'Chaves na Mão'
+    
+    # Padronização de Físicos (Exatamente como você pediu)
+    if 'visita' in c_lower and 'loja' in c_lower: return 'Visita A Loja'
+    if 'cliente' in c_lower and 'loja' in c_lower: return 'Cliente Da Loja'
+    if 'site' in c_lower: return 'Site Da Loja'
+    if 'indicação de amigo' in c_lower: return 'Indicação De Amigo'
+    if 'indicação de func' in c_lower: return 'Indicação De Funcionario'
+    if 'indicação' in c_lower and 'amigo' not in c_lower and 'func' not in c_lower: return 'Indicação'
+    if 'repasse' in c_lower: return 'Repasse'
+    if 'autoshopping' in c_lower or 'auto shopping' in c_lower: return 'Autoshopping'
+    if 'pista shopping' in c_lower: return 'Pista Shopping'
+    if 'feirão shopping' in c_lower: return 'Feirão Shopping'
+    if 'telefone' in c_lower: return 'Telefone'
+    if 'facebook' in c_lower: return 'Facebook'
+    if 'google' in c_lower: return 'Google'
+    
+    return str(c).strip().title()
+
 CANAIS_FISICOS = ['visita a loja', 'cliente da loja', 'pista shopping', 'autoshopping', 'telefone', 'indicação', 'feirão', 'repasse']
-CANAIS_DIGITAIS = ['webmotors', 'socarrao', 'sócarrão', 'olx', 'na pista', 'icarros', 'chaves na mao', 'facebook', 'google', 'mercadolivre', 'site']
+CANAIS_DIGITAIS = ['webmotors', 'socarrao', 'olx', 'na pista', 'icarros', 'chaves na mao', 'facebook', 'google', 'mercado livre', 'site']
 
 EXCLUSAO_DASH_02 = [
     'autoshopping', 'cliente da loja', 'facebook', 'feirão shopping', 
@@ -62,35 +92,19 @@ EXCLUSAO_DASH_02 = [
 def gerar_relatorio_html(titulo, fig, df_tabela):
     chart_html = fig.to_html(full_html=False, include_plotlyjs='cdn')
     table_html = df_tabela.to_html(index=False, border=0, classes="styled-table")
-    
     template = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>{titulo}</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; padding: 30px; color: #333; }}
-            h2 {{ text-align: center; color: #2c3e50; }}
-            .styled-table {{ border-collapse: collapse; margin: 25px 0; font-size: 0.9em; width: 100%; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1); }}
-            .styled-table thead tr {{ background-color: #6c757d; color: #ffffff; text-align: left; }}
-            .styled-table th, .styled-table td {{ padding: 12px 15px; border: 1px solid #ddd; }}
-            .styled-table tbody tr {{ border-bottom: 1px solid #dddddd; }}
-            .styled-table tbody tr:nth-of-type(even) {{ background-color: #f9f9f9; }}
-            @media print {{
-                .styled-table {{ page-break-inside: auto; }}
-                tr {{ page-break-inside: avoid; page-break-after: auto; }}
-            }}
-        </style>
-    </head>
-    <body>
-        <h2>{titulo}</h2>
-        <div style="width: 100%; margin: 0 auto;">{chart_html}</div>
-        <hr style="border: 1px solid #eee; margin: 30px 0;">
-        <h3>Lista de Vendas Referentes</h3>
-        <div>{table_html}</div>
-    </body>
-    </html>
+    <!DOCTYPE html><html><head><meta charset="UTF-8"><title>{titulo}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; padding: 30px; color: #333; }}
+        h2 {{ text-align: center; color: #2c3e50; }}
+        .styled-table {{ border-collapse: collapse; margin: 25px 0; font-size: 0.9em; width: 100%; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1); }}
+        .styled-table thead tr {{ background-color: #6c757d; color: #ffffff; text-align: left; }}
+        .styled-table th, .styled-table td {{ padding: 12px 15px; border: 1px solid #ddd; }}
+        .styled-table tbody tr {{ border-bottom: 1px solid #dddddd; }}
+        .styled-table tbody tr:nth-of-type(even) {{ background-color: #f9f9f9; }}
+    </style>
+    </head><body><h2>{titulo}</h2><div style="width: 100%; margin: 0 auto;">{chart_html}</div>
+    <hr style="border: 1px solid #eee; margin: 30px 0;"><h3>Lista de Vendas Referentes</h3><div>{table_html}</div></body></html>
     """
     return template
 
@@ -119,9 +133,20 @@ with tab_upload:
                     if sistema_origem == "Revenda Mais":
                         vendas = pd.read_excel(arquivo_vendas)
                         leads = pd.read_excel(arquivo_leads)
+                        
+                        # Limpeza Visual
                         vendas.columns = vendas.columns.str.strip()
                         leads.columns = leads.columns.str.strip()
 
+                        # 1. EXTERMINADOR DA LINHA "TOTAL" E LINHAS VAZIAS
+                        vendas = vendas.dropna(subset=['Cliente'], how='all')
+                        vendas = vendas[~vendas['Cliente'].astype(str).str.lower().str.contains('total', na=False)]
+
+                        # 2. APLICA A PADRONIZAÇÃO DE CANAIS LOGO DE CARA
+                        vendas['Canal'] = vendas['Canal'].apply(padronizar_canal)
+                        leads['Canal'] = leads['Canal'].apply(padronizar_canal)
+
+                        # Tratamento de chaves
                         vendas['email_key'] = vendas['E-mail'].apply(limpar_email)
                         vendas['phone_key'] = vendas['Celular'].apply(limpar_telefone)
                         leads['email_key'] = leads['E-mail'].apply(limpar_email)
@@ -133,8 +158,7 @@ with tab_upload:
                             mask = (leads['email_key'] == e) | (leads['phone_key'] == p) if e or p else pd.Series([False]*len(leads))
                             m_leads = leads[mask].sort_values('Data criação')
                             
-                            canal_vendedor_raw = str(row['Canal']).strip()
-                            canal_vendedor_padrao = canal_vendedor_raw.title()
+                            canal_vendedor_padrao = str(row['Canal']) # Já vem padronizado lá de cima!
                             
                             if m_leads.empty:
                                 return pd.Series({
@@ -144,7 +168,7 @@ with tab_upload:
                                     'Validação (Status)': 'Venda Direta / Sem Lead'
                                 })
 
-                            canal_lead_recente = str(m_leads.iloc[-1]['Canal']).strip().title()
+                            canal_lead_recente = str(m_leads.iloc[-1]['Canal']) # Já vem padronizado lá de cima!
                             
                             ids = ' / '.join(m_leads['Id'].astype(str).unique())
                             names = ' / '.join(m_leads['Cliente'].dropna().unique())
@@ -154,13 +178,15 @@ with tab_upload:
                             last_conv = m_leads.iloc[-1]['Conversão'] if 'Conversão' in m_leads.columns else '-'
 
                             c_leads_all = ' '.join(m_leads['Canal'].dropna().unique()).lower()
-                            is_phys = any(p in canal_vendedor_raw.lower() for p in CANAIS_FISICOS)
+                            canal_vendedor_raw = canal_vendedor_padrao.lower()
+                            
+                            is_phys = any(p in canal_vendedor_raw for p in CANAIS_FISICOS)
                             has_dig = any(d in c_leads_all for d in CANAIS_DIGITAIS)
                             
                             status = 'Validado'
                             if is_phys and has_dig:
                                 status = 'ALERTA: Perda de Atribuição (Digital -> Pátio)'
-                            elif not is_phys and not any(canal_vendedor_raw.lower() in str(c).lower() for c in m_leads['Canal'].unique()):
+                            elif not is_phys and not any(canal_vendedor_raw in str(c).lower() for c in m_leads['Canal'].unique()):
                                 status = 'Divergência: Canais Digitais Diferentes'
 
                             return pd.Series({
