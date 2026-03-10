@@ -22,7 +22,7 @@ if 'ultimo_resultado' not in st.session_state: st.session_state['ultimo_resultad
 if 'parecer_ia' not in st.session_state: st.session_state['parecer_ia'] = None
 
 # ==========================================
-# 2. MENU LATERAL (SISTEMA DE ORIGEM)
+# 2. MENU LATERAL (SISTEMA DE ORIGEM E RESET)
 # ==========================================
 with st.sidebar:
     if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
@@ -31,6 +31,13 @@ with st.sidebar:
     
     sistema_origem = st.selectbox("⚙️ Sistema de Origem:", ["Revenda Mais"])
     
+    st.markdown("---")
+    
+    # BOTÃO DE RESET - LIMPA A MEMÓRIA PARA A PRÓXIMA LOJA
+    if st.button("🔄 Limpar Tudo (Nova Loja)", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
+        
     st.markdown("---")
     st.caption("⚡ Tecnologia **OThree**")
 
@@ -49,12 +56,10 @@ def limpar_email(e):
     if pd.isna(e) or str(e).strip() == '' or e == '­': return None
     return str(e).strip().lower()
 
-# O PADRONIZADOR DE CANAIS (Limpa a bagunça de nomes)
 def padronizar_canal(c):
     if pd.isna(c) or str(c).strip() == '': return '-'
     c_lower = str(c).lower().strip()
     
-    # Padronização de Portais Digitais
     if 'mercadolivre' in c_lower or 'mercado livre' in c_lower: return 'Mercado Livre'
     if 'na pista' in c_lower: return 'Na Pista'
     if 'webmotors' in c_lower: return 'Webmotors'
@@ -63,7 +68,6 @@ def padronizar_canal(c):
     if 'olx' in c_lower: return 'OLX'
     if 'chaves na mao' in c_lower or 'chaves na mão' in c_lower: return 'Chaves na Mão'
     
-    # Padronização de Físicos (Exatamente como você pediu)
     if 'visita' in c_lower and 'loja' in c_lower: return 'Visita A Loja'
     if 'cliente' in c_lower and 'loja' in c_lower: return 'Cliente Da Loja'
     if 'site' in c_lower: return 'Site Da Loja'
@@ -127,26 +131,19 @@ with tab_upload:
                     genai.configure(api_key=CHAVE_SECRETA)
                     modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
 
-                    # ---------------------------------------------------------
-                    # MÓDULO 1: REVENDA MAIS
-                    # ---------------------------------------------------------
                     if sistema_origem == "Revenda Mais":
                         vendas = pd.read_excel(arquivo_vendas)
                         leads = pd.read_excel(arquivo_leads)
                         
-                        # Limpeza Visual
                         vendas.columns = vendas.columns.str.strip()
                         leads.columns = leads.columns.str.strip()
 
-                        # 1. EXTERMINADOR DA LINHA "TOTAL" E LINHAS VAZIAS
                         vendas = vendas.dropna(subset=['Cliente'], how='all')
                         vendas = vendas[~vendas['Cliente'].astype(str).str.lower().str.contains('total', na=False)]
 
-                        # 2. APLICA A PADRONIZAÇÃO DE CANAIS LOGO DE CARA
                         vendas['Canal'] = vendas['Canal'].apply(padronizar_canal)
                         leads['Canal'] = leads['Canal'].apply(padronizar_canal)
 
-                        # Tratamento de chaves
                         vendas['email_key'] = vendas['E-mail'].apply(limpar_email)
                         vendas['phone_key'] = vendas['Celular'].apply(limpar_telefone)
                         leads['email_key'] = leads['E-mail'].apply(limpar_email)
@@ -158,7 +155,7 @@ with tab_upload:
                             mask = (leads['email_key'] == e) | (leads['phone_key'] == p) if e or p else pd.Series([False]*len(leads))
                             m_leads = leads[mask].sort_values('Data criação')
                             
-                            canal_vendedor_padrao = str(row['Canal']) # Já vem padronizado lá de cima!
+                            canal_vendedor_padrao = str(row['Canal'])
                             
                             if m_leads.empty:
                                 return pd.Series({
@@ -168,7 +165,7 @@ with tab_upload:
                                     'Validação (Status)': 'Venda Direta / Sem Lead'
                                 })
 
-                            canal_lead_recente = str(m_leads.iloc[-1]['Canal']) # Já vem padronizado lá de cima!
+                            canal_lead_recente = str(m_leads.iloc[-1]['Canal'])
                             
                             ids = ' / '.join(m_leads['Id'].astype(str).unique())
                             names = ' / '.join(m_leads['Cliente'].dropna().unique())
@@ -222,7 +219,6 @@ with tab_upload:
                             if col not in relatorio_bruto.columns: relatorio_bruto[col] = '-'
 
                         relatorio_final = relatorio_bruto[colunas_finais]
-                    # ---------------------------------------------------------
                     
                     st.session_state['ultimo_resultado'] = relatorio_final
                     
@@ -252,7 +248,6 @@ with tab_dash:
         
         dash_pag1, dash_pag2 = st.tabs(["📊 DASH 01: Visão Vendedor (Sem Filtros)", "🎯 DASH 02: Visão Plataformas (Filtrado)"])
         
-        # --- DASH 01: Visão Vendedor ---
         with dash_pag1:
             st.subheader("Atribuição Original (Coluna 'Canal Venda')")
             vendedor_counts = df['Canal Venda (Vendas)'].value_counts().reset_index()
@@ -270,7 +265,6 @@ with tab_dash:
             html_dash1 = gerar_relatorio_html("Dashboard 01 - Visão Vendedor", fig1, df_lista_1)
             st.download_button("💾 Salvar este Dashboard (Gráfico + Tabela)", data=html_dash1, file_name="Dash01_Vendedor.html", mime="text/html")
 
-        # --- DASH 02: Visão Plataformas ---
         with dash_pag2:
             st.subheader("Performance Real de Plataformas (Coluna 'Canais Leads')")
             mask_exclusao = df['Canais Leads (Leads)'].astype(str).str.lower().str.strip().isin(EXCLUSAO_DASH_02)
@@ -297,7 +291,7 @@ with tab_dash:
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False)
         st.download_button(
-            label="📥 Baixar Planilha Oficial (Padrão LeadUp com 16 colunas)", 
+            label="📥 Baixar Planilha Oficial", 
             data=output.getvalue(), 
             file_name="Auditoria_LeadUp.xlsx", 
             type="primary"
