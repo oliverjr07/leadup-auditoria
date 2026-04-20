@@ -45,15 +45,10 @@ st.title("📊 Relatório de Auditoria LeadUp")
 # ==========================================
 # 3. FUNÇÕES GERAIS E PADRONIZAÇÃO
 # ==========================================
-def carregar_arquivo(arquivo, sem_cabecalho=False):
-    """Lê o arquivo de forma inteligente, seja CSV ou Excel"""
+def carregar_arquivo(arquivo):
     if arquivo.name.endswith('.csv'):
-        if sem_cabecalho:
-            return pd.read_csv(arquivo, header=None, sep=None, engine='python')
         return pd.read_csv(arquivo, sep=None, engine='python')
     else:
-        if sem_cabecalho:
-            return pd.read_excel(arquivo, header=None)
         return pd.read_excel(arquivo)
 
 def limpar_telefone(p):
@@ -131,7 +126,6 @@ tab_upload, tab_dash = st.tabs(["📂 1. Nova Auditoria", "📈 2. Dashboards de
 with tab_upload:
     st.markdown(f"**Importando dados do sistema:** `{sistema_origem}`")
     col1, col2 = st.columns(2)
-    # ATUALIZADO: Agora aceita CSV e XLSX
     with col1: arquivo_vendas = st.file_uploader("VENDAS (.xlsx, .csv)", type=['xlsx', 'csv'])
     with col2: arquivo_leads = st.file_uploader("LEADS (.xlsx, .csv)", type=['xlsx', 'csv'])
 
@@ -143,9 +137,9 @@ with tab_upload:
                     genai.configure(api_key=CHAVE_SECRETA)
                     modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
 
-                    # ---------------------------------------------------------
-                    # MÓDULO 1: REVENDA MAIS
-                    # ---------------------------------------------------------
+                    # =========================================================
+                    # MÓDULO 1: REVENDA MAIS (NOVA LÓGICA DE VERDADE)
+                    # =========================================================
                     if sistema_origem == "Revenda Mais":
                         vendas = carregar_arquivo(arquivo_vendas)
                         leads = carregar_arquivo(arquivo_leads)
@@ -153,6 +147,7 @@ with tab_upload:
                         vendas.columns = vendas.columns.str.strip()
                         leads.columns = leads.columns.str.strip()
 
+                        # Filtros de Limpeza Revenda Mais
                         vendas = vendas.dropna(subset=['Cliente'], how='all')
                         vendas = vendas[~vendas['Cliente'].astype(str).str.lower().str.contains('total', na=False)]
 
@@ -165,22 +160,47 @@ with tab_upload:
                         leads['phone_key'] = leads['Telefone'].apply(limpar_telefone)
                         leads['Data criação'] = pd.to_datetime(leads['Data criação'], errors='coerce')
 
-                        def motor(row):
-                            e, p = row['email_key'], row['phone_key']
-                            mask = (leads['email_key'] == e) | (leads['phone_key'] == p) if e or p else pd.Series([False]*len(leads))
-                            m_leads = leads[mask].sort_values('Data criação')
+                        def motor_revenda_mais(row):
+                            e = row['email_key']
+                            p = row['phone_key']
                             
                             canal_vendedor_padrao = str(row['Canal'])
+                            if canal_vendedor_padrao.strip() == '' or canal_vendedor_padrao.lower() == 'nan':
+                                canal_vendedor_padrao = '-'
                             
-                            if m_leads.empty:
+                            # 1. Filtro Anti-Vazio: Construção Estrita da Máscara
+                            mask = pd.Series([False] * len(leads))
+                            tem_busca = False
+                            
+                            if pd.notna(e) and str(e).strip() != '' and e != 'none':
+                                mask = mask | (leads['email_key'] == e)
+                                tem_busca = True
+                            
+                            if pd.notna(p) and str(p).strip() != '' and p != 'none':
+                                mask = mask | (leads['phone_key'] == p)
+                                tem_busca = True
+                                
+                            # 2. Tratamento Ana Helena: Sem chaves válidas ou sem match no Leads
+                            if not tem_busca or leads[mask].empty:
                                 return pd.Series({
-                                    'Id Leads (Leads)': '-', 'Nome Cliente (Leads)': '-', 'E-mail (Leads)': '-',
-                                    'Conversão (Leads)': '-', 'Canais Leads (Leads)': canal_vendedor_padrao, 
-                                    'Data Primeiro Lead (Leads)': '-', 'Data Último Lead (Leads)': '-', 
+                                    'Id Leads (Leads)': '-', 
+                                    'Nome Cliente (Leads)': '-', 
+                                    'E-mail (Leads)': '-',
+                                    'Conversão (Leads)': '-', 
+                                    'Canais Leads (Leads)': canal_vendedor_padrao, # Repete a Venda
+                                    'Data Primeiro Lead (Leads)': '-', 
+                                    'Data Último Lead (Leads)': '-', 
                                     'Validação (Status)': 'Venda Direta / Sem Lead'
                                 })
 
-                            canal_lead_recente = str(m_leads.iloc[-1]['Canal'])
+                            # Processa o Lead encontrado
+                            m_leads = leads[mask].sort_values('Data criação')
+                            
+                            # 3. Tratamento Murilo: Lead Existe, validar Canal
+                            canal_lead_recente = str(m_leads.iloc[-1]['Canal']).strip()
+                            if canal_lead_recente == '' or canal_lead_recente.lower() in ['nan', 'none', '-']:
+                                canal_lead_recente = canal_vendedor_padrao # A verdade da venda preenche a lacuna
+                                
                             ids = ' / '.join(m_leads['Id'].astype(str).unique())
                             names = ' / '.join(m_leads['Cliente'].dropna().unique())
                             emails = ' / '.join(m_leads['E-mail'].dropna().unique())
@@ -201,103 +221,37 @@ with tab_upload:
                                 status = 'Divergência: Canais Digitais Diferentes'
 
                             return pd.Series({
-                                'Id Leads (Leads)': ids, 'Nome Cliente (Leads)': names, 'E-mail (Leads)': emails,
-                                'Conversão (Leads)': last_conv, 'Canais Leads (Leads)': canal_lead_recente,
+                                'Id Leads (Leads)': ids, 
+                                'Nome Cliente (Leads)': names, 
+                                'E-mail (Leads)': emails,
+                                'Conversão (Leads)': last_conv, 
+                                'Canais Leads (Leads)': canal_lead_recente,
                                 'Data Primeiro Lead (Leads)': first_date.strftime('%d/%m/%Y') if pd.notnull(first_date) else '-',
                                 'Data Último Lead (Leads)': last_date.strftime('%d/%m/%Y') if pd.notnull(last_date) else '-',
                                 'Validação (Status)': status
                             })
 
-                        res = vendas.apply(motor, axis=1)
+                        res = vendas.apply(motor_revenda_mais, axis=1)
                         relatorio_bruto = pd.concat([vendas, res], axis=1)
-                        relatorio_bruto = relatorio_bruto.rename(columns={'Cliente': 'Nome Cliente (Vendas)', 'CPF/CNPJ': 'CPF/CNPJ (Vendas)', 'E-mail': 'E-mail (Vendas)', 'Canal': 'Canal Venda (Vendas)'})
+                        
+                        relatorio_bruto = relatorio_bruto.rename(columns={
+                            'Cliente': 'Nome Cliente (Vendas)',
+                            'CPF/CNPJ': 'CPF/CNPJ (Vendas)',
+                            'E-mail': 'E-mail (Vendas)',
+                            'Canal': 'Canal Venda (Vendas)'
+                        })
 
-
-                    # ---------------------------------------------------------
-                    # MÓDULO 2: AUTO CONFI
-                    # ---------------------------------------------------------
+                    # =========================================================
+                    # MÓDULO 2: AUTO CONFI (INTOCÁVEL E ISOLADO)
+                    # =========================================================
                     elif sistema_origem == "Auto Confi":
-                        # Vendas do Auto Confi vem sem cabeçalho e sujo
-                        vendas_brutas = carregar_arquivo(arquivo_vendas, sem_cabecalho=True)
-                        
-                        # Filtra apenas as linhas reais de venda (que começam com # na primeira coluna)
-                        vendas = vendas_brutas[vendas_brutas[0].astype(str).str.startswith('#', na=False)].copy()
-                        
-                        # Prepara as colunas renomeando os índices
-                        vendas['ID Venda'] = vendas[0]
-                        
-                        # Limpa a data (Tira o " às 10:49")
-                        vendas['Dt. venda'] = vendas[1].astype(str).apply(lambda x: x.split(' às ')[0] if ' às ' in x else x)
-                        
-                        vendas['Modelo'] = vendas[6]
-                        vendas['Nome Cliente (Vendas)'] = vendas[7]
-                        vendas['Celular'] = vendas[8]
-                        vendas['Canal Venda (Vendas)'] = vendas[9].apply(padronizar_canal)
-                        
-                        # Preenche colunas que o Auto Confi não tem para não quebrar a planilha final
-                        vendas['E-mail (Vendas)'] = '-'
-                        vendas['CPF/CNPJ (Vendas)'] = '-'
-                        vendas['Placa'] = '-'
-                        
-                        # Chave de cruzamento (Apenas Telefone)
-                        vendas['phone_key'] = vendas['Celular'].apply(limpar_telefone)
+                        st.info("🚧 Módulo Auto Confi será construído em breve de forma isolada.")
+                        st.stop()
 
-                        # Leads do Auto Confi é normal e limpinho
-                        leads = carregar_arquivo(arquivo_leads)
-                        leads.columns = leads.columns.str.strip()
-                        leads['Canal'] = leads['Origem'].apply(padronizar_canal)
-                        leads['phone_key'] = leads['Celular'].apply(limpar_telefone)
-                        leads['Data criação'] = pd.to_datetime(leads['Criado em'], errors='coerce')
 
-                        def motor_autoconfi(row):
-                            p = row['phone_key']
-                            mask = (leads['phone_key'] == p) if p else pd.Series([False]*len(leads))
-                            m_leads = leads[mask].sort_values('Data criação')
-                            
-                            canal_vendedor_padrao = str(row['Canal Venda (Vendas)'])
-                            
-                            if m_leads.empty:
-                                return pd.Series({
-                                    'Id Leads (Leads)': '-', 'Nome Cliente (Leads)': '-', 'E-mail (Leads)': '-',
-                                    'Conversão (Leads)': '-', 'Canais Leads (Leads)': canal_vendedor_padrao, 
-                                    'Data Primeiro Lead (Leads)': '-', 'Data Último Lead (Leads)': '-', 
-                                    'Validação (Status)': 'Venda Direta / Sem Lead'
-                                })
-
-                            canal_lead_recente = str(m_leads.iloc[-1]['Canal'])
-                            ids = ' / '.join(m_leads['ID'].astype(str).unique())
-                            names = ' / '.join(m_leads['Cliente'].dropna().unique())
-                            emails = ' / '.join(m_leads['E-mail'].dropna().astype(str).unique()) if 'E-mail' in m_leads.columns else '-'
-                            first_date = m_leads['Data criação'].min()
-                            last_date = m_leads['Data criação'].max()
-                            last_conv = m_leads.iloc[-1]['Status'] if 'Status' in m_leads.columns else '-'
-                            
-                            c_leads_all = ' '.join(m_leads['Canal'].dropna().unique()).lower()
-                            canal_vendedor_raw = canal_vendedor_padrao.lower()
-                            
-                            is_phys = any(f in canal_vendedor_raw for f in CANAIS_FISICOS)
-                            has_dig = any(d in c_leads_all for d in CANAIS_DIGITAIS)
-                            
-                            status = 'Validado'
-                            if is_phys and has_dig:
-                                status = 'ALERTA: Perda de Atribuição (Digital -> Pátio)'
-                            elif not is_phys and not any(canal_vendedor_raw in str(c).lower() for c in m_leads['Canal'].unique()):
-                                status = 'Divergência: Canais Digitais Diferentes'
-
-                            return pd.Series({
-                                'Id Leads (Leads)': ids, 'Nome Cliente (Leads)': names, 'E-mail (Leads)': emails,
-                                'Conversão (Leads)': last_conv, 'Canais Leads (Leads)': canal_lead_recente,
-                                'Data Primeiro Lead (Leads)': first_date.strftime('%d/%m/%Y') if pd.notnull(first_date) else '-',
-                                'Data Último Lead (Leads)': last_date.strftime('%d/%m/%Y') if pd.notnull(last_date) else '-',
-                                'Validação (Status)': status
-                            })
-
-                        res = vendas.apply(motor_autoconfi, axis=1)
-                        relatorio_bruto = pd.concat([vendas, res], axis=1)
-
-                    # ---------------------------------------------------------
-                    # ESTRUTURA FINAL PADRÃO LEADUP (Válida para TODOS os sistemas)
-                    # ---------------------------------------------------------
+                    # =========================================================
+                    # FINALIZAÇÃO
+                    # =========================================================
                     colunas_finais = [
                         'Id Leads (Leads)', 'Nome Cliente (Vendas)', 'Nome Cliente (Leads)', 
                         'CPF/CNPJ (Vendas)', 'E-mail (Vendas)', 'E-mail (Leads)', 
@@ -309,22 +263,19 @@ with tab_upload:
                     for col in colunas_finais:
                         if col not in relatorio_bruto.columns: relatorio_bruto[col] = '-'
 
-                    # Salva o resultado das planilhas independentemente da IA
                     relatorio_final = relatorio_bruto[colunas_finais]
                     st.session_state['ultimo_resultado'] = relatorio_final
                     
-                    # Tenta rodar a IA em uma caixa separada e segura
+                    # IA BLINDADA CONTRA ERRO 429
                     try:
                         prompt = "Aja como auditor da LeadUp. Escreva 1 parágrafo de resumo executivo focado em apontar falhas de preenchimento de CRM que escondem o ROI dos portais digitais da operação analisada."
                         st.session_state['parecer_ia'] = modelo_ia.generate_content(prompt).text
                     except Exception as erro_ia:
-                        # Se o Google der erro 429, a IA avisa, mas não quebra o sistema!
-                        st.session_state['parecer_ia'] = "⚠️ O parecer da IA está temporariamente indisponível (limite de uso da API do Google). No entanto, seus dados foram cruzados e validados com sucesso abaixo!"
-                    
+                        st.session_state['parecer_ia'] = "⚠️ O parecer da IA está temporariamente indisponível devido ao limite da API do Google, mas seus dados foram cruzados com sucesso!"
+                        
                     st.success("✅ Auditoria finalizada! Veja os Dashboards.")
 
-                except Exception as e: 
-                    st.error(f"Erro no cruzamento de dados: {e}")
+                except Exception as e: st.error(f"Erro no cruzamento de dados: {e}")
 
 # --- ABA 2: DASHBOARDS SEPARADOS ---
 with tab_dash:
