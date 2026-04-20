@@ -309,14 +309,22 @@ with tab_upload:
                     for col in colunas_finais:
                         if col not in relatorio_bruto.columns: relatorio_bruto[col] = '-'
 
+                    # Salva o resultado das planilhas independentemente da IA
                     relatorio_final = relatorio_bruto[colunas_finais]
                     st.session_state['ultimo_resultado'] = relatorio_final
                     
-                    prompt = "Aja como auditor da LeadUp. Escreva 1 parágrafo de resumo executivo focado em apontar falhas de preenchimento de CRM que escondem o ROI dos portais digitais da operação analisada."
-                    st.session_state['parecer_ia'] = modelo_ia.generate_content(prompt).text
+                    # Tenta rodar a IA em uma caixa separada e segura
+                    try:
+                        prompt = "Aja como auditor da LeadUp. Escreva 1 parágrafo de resumo executivo focado em apontar falhas de preenchimento de CRM que escondem o ROI dos portais digitais da operação analisada."
+                        st.session_state['parecer_ia'] = modelo_ia.generate_content(prompt).text
+                    except Exception as erro_ia:
+                        # Se o Google der erro 429, a IA avisa, mas não quebra o sistema!
+                        st.session_state['parecer_ia'] = "⚠️ O parecer da IA está temporariamente indisponível (limite de uso da API do Google). No entanto, seus dados foram cruzados e validados com sucesso abaixo!"
+                    
                     st.success("✅ Auditoria finalizada! Veja os Dashboards.")
 
-                except Exception as e: st.error(f"Erro no processamento: {e}")
+                except Exception as e: 
+                    st.error(f"Erro no cruzamento de dados: {e}")
 
 # --- ABA 2: DASHBOARDS SEPARADOS ---
 with tab_dash:
