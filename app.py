@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import re
 import os
+import uuid
 from datetime import datetime
 from io import BytesIO
 import google.generativeai as genai
@@ -18,8 +19,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Inicialização de Variáveis de Sessão (Incluindo a chave dinâmica dos uploaders)
 if 'ultimo_resultado' not in st.session_state: st.session_state['ultimo_resultado'] = None
 if 'parecer_ia' not in st.session_state: st.session_state['parecer_ia'] = None
+if 'uploader_key' not in st.session_state: st.session_state['uploader_key'] = str(uuid.uuid4())
 
 # ==========================================
 # 2. MENU LATERAL
@@ -33,8 +36,12 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # BOTÃO NOVA AUDITORIA (Agora limpa a tela E os arquivos)
     if st.button("✨ Nova Auditoria", use_container_width=True):
-        st.session_state.clear()
+        st.session_state['ultimo_resultado'] = None
+        st.session_state['parecer_ia'] = None
+        # Troca a chave para forçar a renderização de um novo file_uploader vazio
+        st.session_state['uploader_key'] = str(uuid.uuid4()) 
         st.rerun()
         
     st.markdown("---")
@@ -126,8 +133,10 @@ tab_upload, tab_dash = st.tabs(["📂 1. Nova Auditoria", "📈 2. Dashboards de
 with tab_upload:
     st.markdown(f"**Importando dados do sistema:** `{sistema_origem}`")
     col1, col2 = st.columns(2)
-    with col1: arquivo_vendas = st.file_uploader("VENDAS (.xlsx, .csv)", type=['xlsx', 'csv'])
-    with col2: arquivo_leads = st.file_uploader("LEADS (.xlsx, .csv)", type=['xlsx', 'csv'])
+    
+    # Adicionada a Chave Dinâmica aos Uploaders
+    with col1: arquivo_vendas = st.file_uploader("VENDAS (.xlsx, .csv)", type=['xlsx', 'csv'], key=f"vendas_{st.session_state['uploader_key']}")
+    with col2: arquivo_leads = st.file_uploader("LEADS (.xlsx, .csv)", type=['xlsx', 'csv'], key=f"leads_{st.session_state['uploader_key']}")
 
     if st.button("Gerar Auditoria e Dashboards", use_container_width=True):
         if arquivo_vendas and arquivo_leads:
@@ -138,7 +147,7 @@ with tab_upload:
                     modelo_ia = genai.GenerativeModel('gemini-2.5-flash')
 
                     # =========================================================
-                    # MÓDULO 1: REVENDA MAIS (NOVA LÓGICA DE VERDADE)
+                    # MÓDULO 1: REVENDA MAIS (LÓGICA DE VERDADE MANTIDA)
                     # =========================================================
                     if sistema_origem == "Revenda Mais":
                         vendas = carregar_arquivo(arquivo_vendas)
